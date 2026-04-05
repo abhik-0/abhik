@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - The user's unique ID.
+    //   - academicBackground: string (optional) - The student's academic background.
+    //   - skills: list (optional) - List of student's skills.
+    //   - preferences: list (optional) - List of student's preferences.
+    //
+    // Collection: conversations
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - The user's unique ID.
+    //   - messages: list (required) - Chat history.
+    //   - updatedAt: timestamp (optional) - Last update time.
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid']) &&
+             data.uid == request.auth.uid &&
+             (!('academicBackground' in data) || (data.academicBackground is string && data.academicBackground.size() < 2000)) &&
+             (!('skills' in data) || (data.skills is list && data.skills.size() < 50)) &&
+             (!('preferences' in data) || (data.preferences is list && data.preferences.size() < 50));
+    }
+
+    function isValidConversation(data) {
+      return data.keys().hasAll(['uid', 'messages']) &&
+             data.uid == request.auth.uid &&
+             data.messages is list &&
+             data.messages.size() < 1000;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && isValidUser(request.resource.data);
+      allow update: if isOwner(uid) && isValidUser(request.resource.data);
+    }
+
+    match /conversations/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && isValidConversation(request.resource.data);
+      allow update: if isOwner(uid) && isValidConversation(request.resource.data);
+    }
+  }
+}
